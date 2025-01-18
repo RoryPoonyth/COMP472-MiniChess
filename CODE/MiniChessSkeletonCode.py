@@ -44,6 +44,52 @@ class MiniChess:
         print()
 
     """
+    Returns a list of valid moves
+
+    Args:
+        - game_state:   dictionary | Dictionary representing the current game state
+    Returns:
+        - valid moves:   list | A list of nested tuples corresponding to valid moves [((start_row, start_col),(end_row, end_col)),((start_row, start_col),(end_row, end_col))]
+    """
+    def valid_moves(self, game_state):
+        # First get all pieces and position from the player in the board @Omar
+        # Expected outputs list with ['piece name' , Y position int, X position int] @Omar
+        pieceColor = 'w' if game_state["turn"] == "white" else 'b'
+
+        pieces = [
+            [piece, row_idx, col_idx]
+            for row_idx, row in enumerate(game_state["board"])
+            for col_idx, piece in enumerate(row)
+            if piece.startswith(pieceColor)
+        ]
+        
+        # Second get the possible moves for the pieces  @Omar
+        # Following the code logic, get a list of start pairs x,y and end paris x,y to see if the move value matches any of them
+        for index, piece in enumerate(pieces):
+            match piece[0][1]:
+                case 'p':
+                # Example Pawn in (0,0) can move to (1,0) and if enemy piece in (1,1) then pawn can moove as well to location  @Omar
+                    print(f"Pawn")
+                case 'N':
+                    print(f"Knight")
+                case 'B':
+                    print(f"Bishop")
+                case 'R':
+                    print(f"Rook")
+                case 'Q':
+                    print(f"Queen")
+                case 'K':
+                    print(f"King")
+                case _:
+                    print(f"Unknown piece")      
+
+        # Return a list of all the valid moves.
+        # Implement basic move validation
+        # Check for out-of-bounds, correct turn, move legality, etc
+        
+        return pieces
+
+    """
     Check if the move is valid    
     
     Args: 
@@ -53,22 +99,9 @@ class MiniChess:
         - boolean representing the validity of the move
     """
     def is_valid_move(self, game_state, move):
+        print(self.valid_moves(game_state))
         # Check if move is in list of valid moves
         return True
-
-    """
-    Returns a list of valid moves
-
-    Args:
-        - game_state:   dictionary | Dictionary representing the current game state
-    Returns:
-        - valid moves:   list | A list of nested tuples corresponding to valid moves [((start_row, start_col),(end_row, end_col)),((start_row, start_col),(end_row, end_col))]
-    """
-    def valid_moves(self, game_state):
-        # Return a list of all the valid moves.
-        # Implement basic move validation
-        # Check for out-of-bounds, correct turn, move legality, etc
-        return
 
     """
     Modify to board to make a move

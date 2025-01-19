@@ -150,57 +150,73 @@ class MiniChess:
                     right2Col = col + 2
 
                     # Move 2 Forward and 1 Right                 
-                    if (0 <= front2Row + 1 < 5 and 
-                        0 <= rightCol < 5
+                    if (0 <= front2Row < 5 and 
+                        0 <= rightCol < 5 and (
+                        game_state["board"][front2Row][rightCol] == '.' or
+                        game_state["board"][front2Row][rightCol].startswith(opponentColor))
                     ):
                         move = ((row, col),(front2Row, rightCol))
                         valid_moves.append(move)
                         
                     # Move 2 Forward and 1 Left                 
-                    if (0 <= front2Row + 1  < 5 and 
-                        0 <= leftCol < 5
+                    if (0 <= front2Row < 5 and 
+                        0 <= leftCol < 5 and (
+                        game_state["board"][front2Row][leftCol] == '.' or
+                        game_state["board"][front2Row][leftCol].startswith(opponentColor))
                     ):
                         move = ((row, col),(front2Row, leftCol))
                         valid_moves.append(move)
                         
                     # Move 1 Forward and 2 Right                 
                     if (0 <= frontRow < 5 and 
-                        0 <= right2Col + 1 < 5
+                        0 <= right2Col < 5 and (
+                        game_state["board"][frontRow][right2Col] == '.' or
+                        game_state["board"][frontRow][right2Col].startswith(opponentColor))
                     ):
                         move = ((row, col),(frontRow, right2Col))
                         valid_moves.append(move)
                         
                     # Move 1 Forward and 2 Left                 
                     if (0 <= frontRow < 5 and 
-                        0 <= left2Col - 1 < 5
+                        0 <= left2Col < 5 and (
+                        game_state["board"][frontRow][left2Col] == '.' or
+                        game_state["board"][frontRow][left2Col].startswith(opponentColor))
                     ):
                         move = ((row, col),(frontRow, left2Col))
                         valid_moves.append(move)
                         
                     # Move 2 Backward and 1 Right                 
                     if (0 <= back2Row < 5 and 
-                        0 <= rightCol < 5
+                        0 <= rightCol < 5 and (
+                        game_state["board"][back2Row][rightCol] == '.' or
+                        game_state["board"][back2Row][rightCol].startswith(opponentColor))
                     ):
                         move = ((row, col),(back2Row, rightCol))
                         valid_moves.append(move)
                         
                     # Move 2 Backward and 1 Left                 
                     if (0 <= back2Row  < 5 and 
-                        0 <= leftCol < 5
+                        0 <= leftCol < 5 and (
+                        game_state["board"][back2Row][leftCol] == '.' or
+                        game_state["board"][back2Row][leftCol].startswith(opponentColor))
                     ):
                         move = ((row, col),(back2Row, leftCol))
                         valid_moves.append(move)
                         
                     # Move 1 Backward and 2 Right                 
                     if (0 <= backRow < 5 and 
-                        0 <= right2Col < 5
+                        0 <= right2Col < 5 and (
+                        game_state["board"][backRow][right2Col] == '.' or
+                        game_state["board"][backRow][right2Col].startswith(opponentColor))
                     ):
                         move = ((row, col),(backRow, right2Col))
                         valid_moves.append(move)
                         
                     # Move 1 Backward and 2 Left                 
                     if (0 <= backRow < 5 and 
-                        0 <= left2Col < 5
+                        0 <= left2Col < 5 and (
+                        game_state["board"][backRow][left2Col] == '.' or
+                        game_state["board"][backRow][left2Col].startswith(opponentColor))
                     ):
                         move = ((row, col),(backRow, left2Col))
                         valid_moves.append(move)
@@ -226,9 +242,7 @@ class MiniChess:
     """
     def is_valid_move(self, game_state, move):
         # Check if move is in list of valid moves
-        print(f"Valid Moves: {self.valid_moves(game_state)}")
         if move in self.valid_moves(game_state):
-            print(f"VALID MOVE \nMove: {move} is in list of Valid Moves: {self.valid_moves(game_state)}")
             return True
 
     """
@@ -251,6 +265,32 @@ class MiniChess:
         game_state["turn"] = "black" if game_state["turn"] == "white" else "white"
 
         return game_state
+
+    """
+    Game Over: Game Ends if the oponnents king is capture or if the maximum number of turns has been reached
+    @Omar
+    """
+
+    def game_over(self, game_state):
+        # Game Over Knight Captured
+        kings = [
+            piece
+            for row in game_state["board"]
+            for piece in row
+            if piece == 'wK' or piece == 'bK'
+        ]
+        
+        if(len(kings) == 1 ):
+            if 'wK' in kings:
+                print("Black Wins") 
+            else:
+                print("White Wins") 
+            exit(1)
+
+        
+        # Game Over Draw
+
+    
 
     """
     Parse the input string and modify it into board coordinates
@@ -280,9 +320,9 @@ class MiniChess:
     def play(self):
         print("Welcome to Mini Chess! Enter moves as 'B2 B3'. Type 'exit' to quit.")
         while True:
-            #Implement Function check if max turns is reached or if king is capture
-                #If so print either draw max turns or player won
             self.display_board(self.current_game_state)
+            self.game_over(self.current_game_state)
+
             
             move = input(f"{self.current_game_state['turn'].capitalize()} to move: ")
             if move.lower() == 'exit':

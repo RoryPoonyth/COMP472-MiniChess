@@ -52,42 +52,107 @@ class MiniChess:
         - valid moves:   list | A list of nested tuples corresponding to valid moves [((start_row, start_col),(end_row, end_col)),((start_row, start_col),(end_row, end_col))]
     """
     def valid_moves(self, game_state):
-        # First get all pieces and position from the player in the board @Omar
-        # Expected outputs list with ['piece name' , Y position int, X position int] @Omar
+        
         pieceColor = 'w' if game_state["turn"] == "white" else 'b'
-
+        """
+        Get all pieces of the current player and their positions 
+        Example of desired format of the list corresponding to the base board
+        [['wp', 2, 1], ['wp', 2, 2]] 
+        @Omar
+        """
         pieces = [
-            [piece, row_idx, col_idx]
-            for row_idx, row in enumerate(game_state["board"])
-            for col_idx, piece in enumerate(row)
+            [piece, rowIndex, colIndex]
+            for rowIndex, row in enumerate(game_state["board"])
+            for colIndex, piece in enumerate(row)
             if piece.startswith(pieceColor)
         ]
-        
-        # Second get the possible moves for the pieces  @Omar
-        # Following the code logic, get a list of start pairs x,y and end paris x,y to see if the move value matches any of them
-        for index, piece in enumerate(pieces):
-            match piece[0][1]:
-                case 'p':
-                # Example Pawn in (0,0) can move to (1,0) and if enemy piece in (1,1) then pawn can moove as well to location  @Omar
-                    print(f"Pawn")
-                case 'N':
-                    print(f"Knight")
-                case 'B':
-                    print(f"Bishop")
-                case 'R':
-                    print(f"Rook")
-                case 'Q':
-                    print(f"Queen")
-                case 'K':
-                    print(f"King")
-                case _:
-                    print(f"Unknown piece")      
+                
+        valid_moves = []
+        """
+        Iterate through all pieces from the player and compose list of possible moves
+        The expected output should be an array of start end moves, based from the parse
+        input move for instance 
+        valid_moves = [[start] [end], [start] [end], [start] [end]]
+        valid_moves = [ [1,1]  [1,2],  [2,2]  [2,4],  [2,2]  [2,5]]
+        @Omar
+        """
+        for piece in pieces:
+            """
+            Get current position of the piece reminder:
+            [    'wp',      2,       1     ]
+            [    piece,     row,    col    ]
+            [  piece[0], piece[1], piece[2]]
+            @Omar
+            """
+            # Variable Declaration for Improving Code Readability
+            opponentColor = 'b' if pieceColor == 'w' else 'w'
+            row, col = piece[1], piece[2]  
+            frontRow = row - 1 if pieceColor == 'w' else row + 1
+            lefttCol = col - 1
+            rightCol = col + 1
 
-        # Return a list of all the valid moves.
-        # Implement basic move validation
-        # Check for out-of-bounds, correct turn, move legality, etc
-        
-        return pieces
+            match piece[0][1]:
+                case 'p':  # Pawn
+                    """
+                    Moving Pawn Forward
+                    ['.']
+                    ['wp']
+                    A pawn can move forward only when there is an empty space '.' in front of it. 
+                    The following logic will be
+                    if empty space and row is inside board and column is inside board 
+                        then append to valid moves
+
+                    @Omar
+                    """
+                    # Move Forward                   
+                    if ( game_state["board"][frontRow][col] == '.' and
+                        0 <= frontRow < 5 and 
+                        0 <= col < 5
+                    ):
+                        move = ((row, col),(frontRow, col))
+                        valid_moves.append(move)
+                    """
+                    Pawn Attacking
+                    ['bp','.','bp']
+                    ['.','wp','.']
+                    A pawn can move attack diagonally only when there is an opponent digonally infront of
+                    The following logic will be
+                    Left Attack
+                    if not empty space '.' infront on the left -1 row and row is inside board and left column is inside board 
+                        then append to valid moves
+                    
+                    Right Attack
+                    if not empty space '.' infront on the right +1  row and row is inside board and left column is inside board 
+                        then append to valid moves
+                    @Omar
+                    """
+                    # Left Attack
+                    if ( game_state["board"][frontRow][lefttCol].startswith(opponentColor) and
+                        0 <= frontRow < 5 and 
+                        0 <= lefttCol < 5
+                    ):
+                        move = ((row, col),(frontRow, lefttCol))
+                        valid_moves.append(move)
+                        
+                    # Right Attack
+                    if ( game_state["board"][frontRow][rightCol].startswith(opponentColor) and
+                        0 <= frontRow < 5 and 
+                        0 <= rightCol < 5
+                    ):
+                        move = ((row, col),(frontRow, rightCol))
+                        valid_moves.append(move)
+                        
+                case 'N':  # Knight
+                    print(f"Knight")
+                case 'B':  # Bishop
+                    print(f"Bishop")
+                case 'Q':  # Queen
+                    print(f"Queen")
+                case 'K':  # King
+                    print(f"King")
+
+        return valid_moves
+
 
     """
     Check if the move is valid    
@@ -99,9 +164,10 @@ class MiniChess:
         - boolean representing the validity of the move
     """
     def is_valid_move(self, game_state, move):
-        print(self.valid_moves(game_state))
         # Check if move is in list of valid moves
-        return True
+        if move in self.valid_moves(game_state):
+            print(f"VALID MOVE \nMove: {move} is in list of Valid Moves: {self.valid_moves(game_state)}")
+            return True
 
     """
     Modify to board to make a move
@@ -152,7 +218,10 @@ class MiniChess:
     def play(self):
         print("Welcome to Mini Chess! Enter moves as 'B2 B3'. Type 'exit' to quit.")
         while True:
+            #Implement Function check if max turns is reached or if king is capture
+                #If so print either draw max turns or player won
             self.display_board(self.current_game_state)
+            
             move = input(f"{self.current_game_state['turn'].capitalize()} to move: ")
             if move.lower() == 'exit':
                 print("Game exited.")

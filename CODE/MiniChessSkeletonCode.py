@@ -24,6 +24,7 @@ class MiniChess:
                 ['.', 'wp', 'wp', '.', '.'],
                 ['.', 'wN', 'wB', 'wQ', 'wK']],
                 "turn": 'white',
+                "turnNumber": 1,
                 }
         return state
 
@@ -263,7 +264,9 @@ class MiniChess:
         game_state["board"][start_row][start_col] = '.'
         game_state["board"][end_row][end_col] = piece
         game_state["turn"] = "black" if game_state["turn"] == "white" else "white"
-
+        #Added to increase turns
+        game_state["turnNumber"] += 1 if game_state["turn"] == "white" else 0
+        
         return game_state
 
     """
@@ -271,7 +274,7 @@ class MiniChess:
     @Omar
     """
 
-    def game_over(self, game_state):
+    def game_over(self, maxTurns, game_state):
         # Game Over Knight Captured
         kings = [
             piece
@@ -285,6 +288,11 @@ class MiniChess:
                 print("Black Wins") 
             else:
                 print("White Wins") 
+            exit(1)
+        
+        # Game Over Maximum Turns    
+        if(game_state["turnNumber"] > int(maxTurns) ):
+            print(f"Draw Maximum Turns ({maxTurns}) Reached ") 
             exit(1)
 
         
@@ -319,11 +327,13 @@ class MiniChess:
     """
     def play(self):
         print("Welcome to Mini Chess! Enter moves as 'B2 B3'. Type 'exit' to quit.")
+        maxTurns = input("Please select the maximum number of turns for the match: ")
+
         while True:
             self.display_board(self.current_game_state)
-            self.game_over(self.current_game_state)
+            self.game_over(maxTurns, self.current_game_state)
 
-            
+            print(f"Turn Number: {self.current_game_state['turnNumber']}")
             move = input(f"{self.current_game_state['turn'].capitalize()} to move: ")
             if move.lower() == 'exit':
                 print("Game exited.")

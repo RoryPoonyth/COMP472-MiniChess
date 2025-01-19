@@ -88,7 +88,8 @@ class MiniChess:
             opponentColor = 'b' if pieceColor == 'w' else 'w'
             row, col = piece[1], piece[2]  
             frontRow = row - 1 if pieceColor == 'w' else row + 1
-            lefttCol = col - 1
+            backRow = row + 1 if pieceColor == 'w' else row - 1
+            leftCol = col - 1
             rightCol = col + 1
 
             match piece[0][1]:
@@ -127,11 +128,11 @@ class MiniChess:
                     @Omar
                     """
                     # Left Attack
-                    if ( game_state["board"][frontRow][lefttCol].startswith(opponentColor) and
+                    if ( game_state["board"][frontRow][leftCol].startswith(opponentColor) and
                         0 <= frontRow < 5 and 
-                        0 <= lefttCol < 5
+                        0 <= leftCol < 5
                     ):
-                        move = ((row, col),(frontRow, lefttCol))
+                        move = ((row, col),(frontRow, leftCol))
                         valid_moves.append(move)
                         
                     # Right Attack
@@ -143,7 +144,67 @@ class MiniChess:
                         valid_moves.append(move)
                         
                 case 'N':  # Knight
-                    print(f"Knight")
+                    front2Row = row - 2 if pieceColor == 'w' else row + 2
+                    back2Row = row + 2 if pieceColor == 'w' else row - 2
+                    left2Col = col - 2
+                    right2Col = col + 2
+
+                    # Move 2 Forward and 1 Right                 
+                    if (0 <= front2Row + 1 < 5 and 
+                        0 <= rightCol < 5
+                    ):
+                        move = ((row, col),(front2Row, rightCol))
+                        valid_moves.append(move)
+                        
+                    # Move 2 Forward and 1 Left                 
+                    if (0 <= front2Row + 1  < 5 and 
+                        0 <= leftCol < 5
+                    ):
+                        move = ((row, col),(front2Row, leftCol))
+                        valid_moves.append(move)
+                        
+                    # Move 1 Forward and 2 Right                 
+                    if (0 <= frontRow < 5 and 
+                        0 <= right2Col + 1 < 5
+                    ):
+                        move = ((row, col),(frontRow, right2Col))
+                        valid_moves.append(move)
+                        
+                    # Move 1 Forward and 2 Left                 
+                    if (0 <= frontRow < 5 and 
+                        0 <= left2Col - 1 < 5
+                    ):
+                        move = ((row, col),(frontRow, left2Col))
+                        valid_moves.append(move)
+                        
+                    # Move 2 Backward and 1 Right                 
+                    if (0 <= back2Row < 5 and 
+                        0 <= rightCol < 5
+                    ):
+                        move = ((row, col),(back2Row, rightCol))
+                        valid_moves.append(move)
+                        
+                    # Move 2 Backward and 1 Left                 
+                    if (0 <= back2Row  < 5 and 
+                        0 <= leftCol < 5
+                    ):
+                        move = ((row, col),(back2Row, leftCol))
+                        valid_moves.append(move)
+                        
+                    # Move 1 Backward and 2 Right                 
+                    if (0 <= backRow < 5 and 
+                        0 <= right2Col < 5
+                    ):
+                        move = ((row, col),(backRow, right2Col))
+                        valid_moves.append(move)
+                        
+                    # Move 1 Backward and 2 Left                 
+                    if (0 <= backRow < 5 and 
+                        0 <= left2Col < 5
+                    ):
+                        move = ((row, col),(backRow, left2Col))
+                        valid_moves.append(move)
+                        
                 case 'B':  # Bishop
                     print(f"Bishop")
                 case 'Q':  # Queen
@@ -165,6 +226,7 @@ class MiniChess:
     """
     def is_valid_move(self, game_state, move):
         # Check if move is in list of valid moves
+        print(f"Valid Moves: {self.valid_moves(game_state)}")
         if move in self.valid_moves(game_state):
             print(f"VALID MOVE \nMove: {move} is in list of Valid Moves: {self.valid_moves(game_state)}")
             return True

@@ -1,4 +1,3 @@
-# search.py
 import math
 import copy
 
@@ -8,15 +7,20 @@ import copy
 
 def evaluate_state_e0(game_state):
     """
-    A simple material-only heuristic for 5x5 mini-chess.
+    e0: Simple material + potential captures.
     Piece values:
-      Pawn (p) = 1
-      Knight (N), Bishop (B) = 3
-      Queen (Q) = 9
-      King (K)  = 999  (very high to avoid losing the king)
+      Pawn (p)   = 1
+      Knight (N) = 3
+      Bishop (B) = 3
+      Queen (Q)  = 9
+      King (K)   = 999
+    We add a small bonus for pieces that can be captured in one move,
+    weighting the captured piece's value by 0.2, for instance.
     """
     board = game_state["board"]
     score = 0
+
+    # Basic material
     piece_values = {
         'p': 1,
         'N': 3,
@@ -35,24 +39,31 @@ def evaluate_state_e0(game_state):
                 score += value
             else:
                 score -= value
-    return score
 
+    # Potential captures
+    white_capture_value = approximate_captures(board, 'w', piece_values)
+    black_capture_value = approximate_captures(board, 'b', piece_values)
+    # Add a fraction of the capturable value to the score
+    # e.g. 0.2 factor
+    capture_factor = 0.2
+    capture_term = capture_factor * (white_capture_value - black_capture_value)
+    score += capture_term
+
+    return score
 
 def evaluate_state_e1(game_state):
     """
-    e1: Material + Pawn Advancement + Center Control
-
-    1) Material (e0) as base.
-    2) Small bonus for how far pawns have advanced:
-       - White pawns => +0.2 * (4 - row)
-       - Black pawns => -0.2 * row
-    3) Small bonus for occupying center squares:
-       let's define (1,1), (1,2), (2,1), (2,2) as "center".
-       Each piece = +0.5 if white, -0.5 if black.
+    e1: Builds on e0 by also adding:
+       - Pawn advancement
+       - Center control
+       - + potential captures
     """
     board = game_state["board"]
+
+    # Start with the base e0 (material + capture potential)
     base_score = evaluate_state_e0(game_state)
 
+    # Pawn Advancement + Center Control
     pawn_adv_bonus = 0.0
     center_control_bonus = 0.0
     center_squares = {(1,1), (1,2), (2,1), (2,2)}
@@ -81,50 +92,151 @@ def evaluate_state_e1(game_state):
 
     return base_score + pawn_adv_bonus + center_control_bonus
 
-
 def evaluate_state_e2(game_state):
     """
     e2: Builds on e1 by adding:
-        - Mobility: (# White moves - # Black moves) * 0.1
-        - King Safety: penalize if a king is on the board edge.
+        - Mobility: (#White moves - #Black moves) * 0.1
+        - King safety: penalize king on board edge
+        - + potential captures (inherited from e0)
 
-    For mobility, we do an approximate count of possible moves 
-    (like a partial version of valid_moves). This is not perfect 
-    but good enough for a small board.
-
-    For king safety, if a king is on an edge => 
-    White king on edge => -1 to the score
-    Black king on edge => +1 to the score (also effectively -1 for black).
+    So this has everything:
+      Material + captures + pawn advancement + center + mobility + king safety
     """
-    score = evaluate_state_e1(game_state)
     board = game_state["board"]
 
-    # Mobility
+    # Start with e1 logic (which already includes e0 inside it)
+    score = evaluate_state_e1(game_state)
+
+    # 1) Mobility
     w_moves = approximate_moves(board, 'w')
     b_moves = approximate_moves(board, 'b')
     mobility_term = 0.1 * (w_moves - b_moves)
     score += mobility_term
 
-    # King safety
+    # 2) King safety
     for r, row in enumerate(board):
         for c, piece in enumerate(row):
             if piece.endswith('K'):  # wK or bK
                 is_edge = (r == 0 or r == 4 or c == 0 or c == 4)
                 if is_edge:
                     if piece.startswith('w'):
-                        score -= 1.0  # White king on edge => bad
+                        score -= 1.0
                     else:
-                        score += 1.0  # Black king on edge => good for White
+                        score += 1.0
 
     return score
 
+def approximate_captures(board, color_char, piece_values):
+    """
+    Returns the total *value* of opponent pieces that 'color_char' can capture
+    in one move. The higher this is, the better for that color, since they 
+    can potentially win material. We'll reuse logic similar to approximate_moves,
+    but specifically to see if the square targeted is an opponent piece.
+
+    piece_values: a dict mapping {'p':1, 'N':3,...}
+    """
+    opponent = 'w' if color_char == 'b' else 'b'
+    total_capture_value = 0
+
+    for r, row in enumerate(board):
+        for c, piece in enumerate(row):
+            if piece.startswith(color_char):
+                ptype = piece[1]
+                # We'll check each potential move for a capture
+                possible_targets = get_possible_moves_for_piece(board, r, c, piece, opponent)
+                # If the target is an opponent piece, add its piece_values
+                for (tr, tc) in possible_targets:
+                    target_piece = board[tr][tc]
+                    if target_piece.startswith(opponent):
+                        ttype = target_piece[1]
+                        val = piece_values.get(ttype, 0)
+                        total_capture_value += val
+
+    return total_capture_value
+
+def get_possible_moves_for_piece(board, r, c, piece, opponent):
+    """
+    Return a list of board coordinates (row,col) 
+    that this piece can move to in one step, ignoring checks, etc. 
+    Only used for the purpose of evaluating potential captures.
+    """
+    ptype = piece[1]
+    color = piece[0]
+    moves = []
+
+    if ptype == 'p':
+        front = r - 1 if color == 'w' else r + 1
+        leftCol = c - 1
+        rightCol = c + 1
+        # Pawn captures are diagonals
+        if 0 <= front < 5 and 0 <= leftCol < 5:
+            moves.append((front, leftCol))
+        if 0 <= front < 5 and 0 <= rightCol < 5:
+            moves.append((front, rightCol))
+
+    elif ptype == 'N':
+        knight_steps = [(-2, -1), (-2, +1), (+2, -1), (+2, +1),
+                        (-1, -2), (-1, +2), (+1, -2), (+1, +2)]
+        for (dr, dc) in knight_steps:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < 5 and 0 <= nc < 5:
+                moves.append((nr, nc))
+
+    elif ptype == 'B':
+        directions = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
+        for dr, dc in directions:
+            nr, nc = r, c
+            while True:
+                nr += dr
+                nc += dc
+                if not (0 <= nr < 5 and 0 <= nc < 5):
+                    break
+                moves.append((nr, nc))
+                # If we hit any piece (opponent or ours), we stop
+                if board[nr][nc] != '.':
+                    break
+
+    elif ptype == 'Q':
+        directions = [
+            (-1,  0), (1,  0),
+            (0, -1),  (0,  1),
+            (-1, -1), (-1,  1),
+            (1, -1),  (1,  1)
+        ]
+        for dr, dc in directions:
+            nr, nc = r, c
+            while True:
+                nr += dr
+                nc += dc
+                if not (0 <= nr < 5 and 0 <= nc < 5):
+                    break
+                moves.append((nr, nc))
+                # Stop if we hit any piece
+                if board[nr][nc] != '.':
+                    break
+
+    elif ptype == 'K':
+        directions = [
+            (-1, 0), (1, 0),
+            (0, -1), (0, 1),
+            (-1, -1), (-1, +1),
+            (1, -1), (1, +1)
+        ]
+        for dr, dc in directions:
+            nr = r + dr
+            nc = c + dc
+            if 0 <= nr < 5 and 0 <= nc < 5:
+                moves.append((nr, nc))
+
+    return moves
+
 def approximate_moves(board, color_char):
     """
-    Roughly approximate how many moves a given side (w/b) might have.
-    We'll reuse some logic from e0 to gather pieces 
-    and do a partial "valid moves" check.
+    Same as before: approximate mobility by counting 
+    how many squares 'color_char' pieces can move to 
+    (including captures on opponent squares).
     """
-    pieceColor = color_char  # 'w' or 'b'
+    pieceColor = color_char  
     opponentColor = 'b' if pieceColor == 'w' else 'w'
     moves_count = 0
 
@@ -132,12 +244,12 @@ def approximate_moves(board, color_char):
         for c, piece in enumerate(row):
             if piece.startswith(pieceColor):
                 ptype = piece[1]
+                # We'll do a partial simulation of valid moves 
+                # (including potential captures).
                 if ptype == 'p':
-                    # Forward move
                     front = r - 1 if pieceColor == 'w' else r + 1
                     if 0 <= front < 5 and board[front][c] == '.':
                         moves_count += 1
-                    # Captures left/right
                     leftCol = c - 1
                     rightCol = c + 1
                     if 0 <= front < 5 and 0 <= leftCol < 5 and board[front][leftCol].startswith(opponentColor):
@@ -173,8 +285,10 @@ def approximate_moves(board, color_char):
 
                 elif ptype == 'Q':
                     directions = [
-                        (-1, 0), (1, 0), (0, -1), (0, 1),
-                        (-1, -1), (-1, +1), (1, -1), (1, +1)
+                        (-1,  0), (1,  0),
+                        (0, -1),  (0,  1),
+                        (-1, -1), (-1,  1),
+                        (1, -1),  (1,  1)
                     ]
                     for dr, dc in directions:
                         nr, nc = r, c
@@ -196,7 +310,7 @@ def approximate_moves(board, color_char):
                         (-1, 0), (1, 0),
                         (0, -1), (0, 1),
                         (-1, -1), (-1, +1),
-                        (1, -1), (1, +1)
+                        (1, -1),  (1, +1)
                     ]
                     for dr, dc in directions:
                         nr, nc = r + dr, c + dc
@@ -206,12 +320,6 @@ def approximate_moves(board, color_char):
 
     return moves_count
 
-
-HEURISTICS = {
-    'e0': evaluate_state_e0,
-    'e1': evaluate_state_e1,
-    'e2': evaluate_state_e2
-}
 
 # ----------------------------------------------------------------------
 #                 MINIMAX / ALPHA-BETA SEARCH
@@ -300,24 +408,43 @@ def choose_best_move(game, game_state, max_depth, use_alpha_beta, heuristic_name
     Wrapper that picks the best move using either minimax or alpha-beta.
     Returns (best_move, best_score).
     """
+    # Select the correct heuristic function by name
+    from collections import defaultdict
+    from functools import partial
+
+    from sys import exit
+    # For safety, fallback to e0 if invalid
+    from math import inf
+
+    # Our dictionary is defined at the bottom, but we've already declared it above:
+    # It's possible we do it like this for clarity:
+    #   heuristic_func = HEURISTICS.get(heuristic_name, evaluate_state_e0)
     heuristic_func = HEURISTICS.get(heuristic_name, evaluate_state_e0)
+
     maximizing_player = (game_state["turn"] == "white")
 
-    state_copy = copy_game_state(game_state)
+    # Copy the state so we don't mutate the actual game_state
+    copied = copy_game_state(game_state)
 
     if use_alpha_beta:
         best_score, best_move = alpha_beta(
-            game, state_copy, max_depth,
-            alpha=-math.inf, beta=math.inf,
+            game,
+            copied,
+            depth=max_depth,
+            alpha=-math.inf,
+            beta= math.inf,
             maximizing_player=maximizing_player,
             heuristic_func=heuristic_func
         )
     else:
         best_score, best_move = minimax(
-            game, state_copy, max_depth,
+            game,
+            copied,
+            depth=max_depth,
             maximizing_player=maximizing_player,
             heuristic_func=heuristic_func
         )
+
     return best_move, best_score
 
 
@@ -328,3 +455,11 @@ def copy_game_state(game_state):
         "turn": game_state["turn"]
     }
     return new_state
+
+
+# We keep a reference here, so choose_best_move can get it easily
+HEURISTICS = {
+    'e0': evaluate_state_e0,
+    'e1': evaluate_state_e1,
+    'e2': evaluate_state_e2
+}

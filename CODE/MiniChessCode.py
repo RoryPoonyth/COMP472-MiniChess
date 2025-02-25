@@ -3,15 +3,18 @@ import copy
 import time
 import sys
 
+# NEW: import our search logic (with e0, e1, e2 heuristics)
+from search import choose_best_move
+
 class MiniChess:
     def __init__(
         self,
-        max_time=3,            
-        max_turns=10,          
-        use_alpha_beta=True,   
-        mode=1,                
-        human_color='white',   
-        heuristic_name='e0'    # name of AI's heuristic (e.g. e0, e1, e2)
+        max_time=3,
+        max_turns=10,
+        use_alpha_beta=True,
+        mode=1,
+        human_color='white',
+        heuristic_name='e0'  # <<=== the chosen heuristic
     ):
         """
         If mode=1 => Human vs Human
@@ -64,6 +67,7 @@ class MiniChess:
     def init_board(self):
         """
         5x5 mini-chess board
+        White pawns typically on row=3, black pawns on row=1, etc.
         """
         state = {
             "board": [
@@ -160,10 +164,10 @@ class MiniChess:
          c) action (move)
          d) AI time
          e) AI heuristic score
-         f) AI minimax/alpha-beta search score
+         f) AI minimax/Alpha-beta search score
          g) new board config
 
-        3.2) If AI, cumulative info: states explored, etc. (placeholders)
+        3.2) If AI, cumulative info: states explored, etc.
         """
         self.log("----- Action Info -----")
         self.log(f"(a) Player: {player_name}")
@@ -203,6 +207,16 @@ class MiniChess:
         if not self.log_file.closed:
             self.log_file.close()
 
+    def log_invalid_move(self, player, move_input, reason="Unknown"):
+        """
+        Log a short record of an invalid move attempt.
+        """
+        self.log("----- Invalid Move Attempt -----")
+        self.log(f"Player: {player}")
+        self.log(f"Attempted Input: '{move_input}'")
+        self.log(f"Reason: {reason}")
+        self.log()
+
     # ----------------------------------------------------------------------
     #                          CHESS LOGIC
     # ----------------------------------------------------------------------
@@ -221,15 +235,12 @@ class MiniChess:
     def parse_input(self, move_str):
         """
         Convert a user-entered string like "B3 B5" into ((row1,col1),(row2,col2)).
-        Row '1' => row4, row '5' => row0; 
-        Col 'A' => col0, 'B' => col1, etc.
-        Example: "B3" => (2,1); "B3 B5" => ((2,1),(0,1)).
         Returns None if parsing fails.
         """
         try:
             start, end = move_str.split()
-            start_col = ord(start[0].upper()) - ord('A')   # 'A' => 0, 'B' => 1, ...
-            start_row = 5 - int(start[1])                  # '1' => row4, '5' => row0
+            start_col = ord(start[0].upper()) - ord('A')
+            start_row = 5 - int(start[1])
             end_col   = ord(end[0].upper()) - ord('A')
             end_row   = 5 - int(end[1])
             return ((start_row, start_col), (end_row, end_col))
@@ -265,20 +276,11 @@ class MiniChess:
                     valid_moves.append(((row, col), (frontRow, rightCol)))
 
             elif piece_type == 'N':
-                front2Row = row - 2 if pieceColor == 'w' else row + 2
-                back2Row  = row + 2 if pieceColor == 'w' else row - 2
-                left2Col  = col - 2
-                right2Col = col + 2
-
                 knight_moves = [
-                    (front2Row, rightCol),
-                    (front2Row, leftCol),
-                    (row - 1 if pieceColor == 'w' else row + 1, right2Col),
-                    (row - 1 if pieceColor == 'w' else row + 1, left2Col),
-                    (back2Row,  rightCol),
-                    (back2Row,  leftCol),
-                    (backRow,   right2Col),
-                    (backRow,   left2Col),
+                    (row - 2, col - 1), (row - 2, col + 1),
+                    (row + 2, col - 1), (row + 2, col + 1),
+                    (row - 1, col - 2), (row - 1, col + 2),
+                    (row + 1, col - 2), (row + 1, col + 2),
                 ]
                 for (r2, c2) in knight_moves:
                     if 0 <= r2 < 5 and 0 <= c2 < 5:
@@ -360,32 +362,32 @@ class MiniChess:
             elif piece.startswith('b') and end_row == 4:
                 game_state["board"][end_row][end_col] = 'bQ'
 
+        # Switch turn
         game_state["turn"] = 'black' if game_state["turn"] == 'white' else 'white'
         return game_state
 
     def game_over(self, game_state):
+        """
+        Return True if the game has ended, False otherwise.
+        No printing here—just the logic.
+        """
         kings = [
             piece for row in game_state["board"] for piece in row
             if piece in ['wK', 'bK']
         ]
         if len(kings) == 1:
-            if 'wK' in kings:
-                print("White Wins!")
-                return True
-            else:
-                print("Black Wins!")
-                return True
+            # White or black is missing a king => game is over
+            return True
 
         if self.turn_number > self.max_turns:
-            print(f"Reached max turn limit = {self.max_turns}. Game is a draw.")
+            # Reached the maximum turn limit => draw
             return True
-        
+
         return False
 
     def human_move(self):
         """
-        Prompt the human player for a move (e.g. "B3 B5"), 
-        parse/validate it, and return the move if valid.
+        Prompt the human player for a move, parse/validate it, and return if valid.
         """
         while True:
             move_input = input(f"{self.current_game_state['turn'].capitalize()} to move (e.g. B3 B5), or 'exit': ")
@@ -396,10 +398,27 @@ class MiniChess:
                 sys.exit(0)
             
             parsed = self.parse_input(move_input)
-            if parsed and self.is_valid_move(self.current_game_state, parsed):
-                return parsed
-            else:
+            if not parsed:
+                # Log invalid parse
+                self.log_invalid_move(
+                    player=self.current_game_state["turn"], 
+                    move_input=move_input, 
+                    reason="Parsing error"
+                )
+                print("Invalid move format. Try again.")
+                continue
+            
+            if not self.is_valid_move(self.current_game_state, parsed):
+                # Log invalid move
+                self.log_invalid_move(
+                    player=self.current_game_state["turn"], 
+                    move_input=move_input, 
+                    reason="Not in valid move list"
+                )
                 print("Invalid move. Try again.")
+                continue
+            
+            return parsed
 
     def run_game_loop(self):
         while True:
@@ -421,9 +440,7 @@ class MiniChess:
                 heur        = None
                 search_s    = None
 
-            # Perform the move
             self.make_move(self.current_game_state, chosen_move)
-            # Log the move
             action_str = self.notation_from_indices(*chosen_move)
             self.log_move_action(
                 player_name="white",
@@ -477,25 +494,28 @@ class MiniChess:
 
     def ai_flow(self):
         """
-        AI picks a move. 
+        AI picks a move using Minimax/Alpha-Beta with the chosen heuristic (e0/e1/e2).
         Returns (chosen_move, move_time, heuristic_score, search_score).
         """
         start_time = time.time()
+        search_depth = 3  # You can tweak the depth as needed.
 
-        # Pretend we explore 5 states at depth=2, as a placeholder:
-        self.cumulative_states_explored += 5
-        depth_used = 2
-        self.states_by_depth[depth_used] = self.states_by_depth.get(depth_used, 0) + 5
+        chosen_move, best_score = choose_best_move(
+            game=self,
+            game_state=self.current_game_state,
+            max_depth=search_depth,
+            use_alpha_beta=self.use_alpha_beta,
+            heuristic_name=self.heuristic_name
+        )
 
-        all_moves = self.valid_moves(self.current_game_state)
-        if not all_moves:
+        elapsed = time.time() - start_time
+
+        if not chosen_move:
             print("AI has no moves. Game ends.")
             self.log_winner("No moves => game over.")
             self.close_log()
             sys.exit(0)
 
-        chosen_move = all_moves[0]
-        elapsed = time.time() - start_time
         if elapsed > self.max_time:
             print(f"AI exceeded {self.max_time}s time limit and loses.")
             self.log_winner("AI lost by time forfeit.")
@@ -508,14 +528,20 @@ class MiniChess:
             self.close_log()
             sys.exit(0)
 
-        # Placeholder heuristic scores
-        heuristic_score = 0
-        search_score    = -1
+        # We'll treat best_score as both heuristic_score and search_score
+        heuristic_score = best_score
+        search_score    = best_score
+
+        # For demonstration, increment states explored by 10 each AI move
+        self.cumulative_states_explored += 10
+        self.states_by_depth[search_depth] = self.states_by_depth.get(search_depth, 0) + 10
+
         return (chosen_move, elapsed, heuristic_score, search_score)
 
     def log_end_and_close(self):
         """
         Called after the game ends to log final result and close the file.
+        Prints the final result once, with the # of turns.
         """
         kings = [
             piece for row in self.current_game_state["board"] for piece in row
@@ -523,10 +549,13 @@ class MiniChess:
         ]
         if len(kings) == 1:
             if 'wK' in kings:
+                print(f"White Wins in {self.turn_number} turns!")
                 msg = f"White won in {self.turn_number} turns"
             else:
+                print(f"Black Wins in {self.turn_number} turns!")
                 msg = f"Black won in {self.turn_number} turns"
         else:
+            print(f"Draw after {self.turn_number} turns!")
             msg = f"Draw after {self.turn_number} turns"
 
         self.log_winner(msg)
@@ -536,7 +565,7 @@ class MiniChess:
         print(f"\nStarting MiniChess with: "
               f"max_time={self.max_time}, max_turns={self.max_turns}, "
               f"use_alpha_beta={self.use_alpha_beta}, mode={self.mode}, "
-              f"human_color={self.human_color}.")
+              f"human_color={self.human_color}, heuristic_name={self.heuristic_name}.")
         print(f"Logging to file: {self.log_filename}")
         self.run_game_loop()
 
@@ -611,12 +640,24 @@ def main():
                 break
             else:
                 print("Invalid input. Enter True or False.")
+
+        # 5) HEURISTIC
+        while True:
+            print("Choose your heuristic (e0/e1/e2). Default = e0.")
+            heuristic_choice = input("Heuristic: ").lower()
+            if heuristic_choice.strip() == '':
+                heuristic_name = 'e0'
+                break
+            elif heuristic_choice in ['e0', 'e1', 'e2']:
+                heuristic_name = heuristic_choice
+                break
+            else:
+                print("Invalid choice. Pick from e0, e1, e2.")
     else:
         # Human vs Human => no AI parameters
         max_time       = 3
         use_alpha_beta = True
-
-    heuristic_name = 'e0'
+        heuristic_name = 'e0'
 
     # Create the game object
     game = MiniChess(

@@ -11,7 +11,7 @@ class MiniChess:
         use_alpha_beta=True,   
         mode=1,                
         human_color='white',   
-        heuristic_name='e0'    # name of AI's heuristic (e.g. e0, e1, e2)
+        heuristic_name='e0' 
     ):
         """
         If mode=1 => Human vs Human
@@ -401,6 +401,86 @@ class MiniChess:
             else:
                 print("Invalid move. Try again.")
 
+    def calculate_heuristic_e0(self, game_state):
+        """
+        Calculate the heuristic value e0 for the given game state.
+        e0 = (#wp + 3·#wB + 3·#wN + 9·#wQ + 999·wK) − (#bp + 3·#bB + 3·#bN + 9·#bQ + 999·bK)
+        """
+        white_pieces = {
+            'p': 0,
+            'B': 0,
+            'N': 0,
+            'Q': 0,
+            'K': 0
+        }
+        black_pieces = {
+            'p': 0,
+            'B': 0,
+            'N': 0,
+            'Q': 0,
+            'K': 0
+        }
+
+        for row in game_state["board"]:
+            for piece in row:
+                if piece.startswith('w'):
+                    piece_type = piece[1]
+                    if piece_type in white_pieces:
+                        white_pieces[piece_type] += 1
+                elif piece.startswith('b'):
+                    piece_type = piece[1]
+                    if piece_type in black_pieces:
+                        black_pieces[piece_type] += 1
+
+        white_score = (
+            white_pieces['p'] +
+            3 * white_pieces['B'] +
+            3 * white_pieces['N'] +
+            9 * white_pieces['Q'] +
+            999 * white_pieces['K']
+        )
+        black_score = (
+            black_pieces['p'] +
+            3 * black_pieces['B'] +
+            3 * black_pieces['N'] +
+            9 * black_pieces['Q'] +
+            999 * black_pieces['K']
+        )
+
+        return white_score - black_score
+
+    def ai_flow(self):
+        """
+        AI decision-making process.
+        """
+        start_time = time.time()
+        best_move = None
+        best_value = -math.inf if self.current_game_state["turn"] == "white" else math.inf
+
+        # Get all valid moves for the current player
+        valid_moves = self.valid_moves(self.current_game_state)
+
+        for move in valid_moves:
+            # Make a copy of the game state and apply the move
+            new_state = copy.deepcopy(self.current_game_state)
+            new_state = self.make_move(new_state, move)
+
+            # Calculate the heuristic value for the new state
+            heuristic_value = self.calculate_heuristic_e0(new_state)
+
+            # Update the best move based on the heuristic value
+            if self.current_game_state["turn"] == "white":
+                if heuristic_value > best_value:
+                    best_value = heuristic_value
+                    best_move = move
+            else:
+                if heuristic_value < best_value:
+                    best_value = heuristic_value
+                    best_move = move
+
+        move_time = time.time() - start_time
+        return best_move, move_time, best_value, best_value
+
     def run_game_loop(self):
         while True:
             print(f"\n===== TURN {self.turn_number} =====")
@@ -475,44 +555,6 @@ class MiniChess:
 
             self.turn_number += 1
 
-    def ai_flow(self):
-        """
-        AI picks a move. 
-        Returns (chosen_move, move_time, heuristic_score, search_score).
-        """
-        start_time = time.time()
-
-        # Pretend we explore 5 states at depth=2, as a placeholder:
-        self.cumulative_states_explored += 5
-        depth_used = 2
-        self.states_by_depth[depth_used] = self.states_by_depth.get(depth_used, 0) + 5
-
-        all_moves = self.valid_moves(self.current_game_state)
-        if not all_moves:
-            print("AI has no moves. Game ends.")
-            self.log_winner("No moves => game over.")
-            self.close_log()
-            sys.exit(0)
-
-        chosen_move = all_moves[0]
-        elapsed = time.time() - start_time
-        if elapsed > self.max_time:
-            print(f"AI exceeded {self.max_time}s time limit and loses.")
-            self.log_winner("AI lost by time forfeit.")
-            self.close_log()
-            sys.exit(0)
-
-        if not self.is_valid_move(self.current_game_state, chosen_move):
-            print("AI generated an illegal move. AI loses.")
-            self.log_winner("AI lost by illegal move.")
-            self.close_log()
-            sys.exit(0)
-
-        # Placeholder heuristic scores
-        heuristic_score = 0
-        search_score    = -1
-        return (chosen_move, elapsed, heuristic_score, search_score)
-
     def log_end_and_close(self):
         """
         Called after the game ends to log final result and close the file.
@@ -548,8 +590,8 @@ def main():
     while True:
         print("Select Play Mode:")
         print("1 - Human vs Human")
-        print("2 - Human vs AI")
-        print("3 - AI vs AI")
+        print("2 - Human vs AI (Not Implemented Yet)")
+        print("3 - AI vs AI (Not Implemented Yet)")
         choice = input("Enter choice (1/2/3): ")
         if choice not in ['1','2','3']:
             print("Invalid choice. Try again.")

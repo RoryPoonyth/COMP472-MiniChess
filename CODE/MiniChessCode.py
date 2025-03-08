@@ -4,47 +4,95 @@ import time
 import sys
 from datetime import datetime
 
-
-# NEW: import our search logic (with e0, e1, e2 heuristics)
+# NEW: We'll import our search logic (with e0, e1, e2 heuristics)
 from search import choose_best_move
 
+# NEW: Short number formatting (for large counts)
+def short_number_fmt(num):
+    """
+    Convert a large integer to a short string like:
+      1,100 => '1.1k'
+      7,300 => '7.3k'
+      46,700 => '46.7k'
+      286,500 => '286.5k'
+      1,800,000 => '1.8M'
+    Otherwise just str(num).
+    """
+    if num >= 1_000_000:
+        return f"{num / 1_000_000:.1f}M"
+    elif num >= 1_000:
+        return f"{num / 1_000:.1f}k"
+    else:
+        return str(num)
+
+
 class MiniChess:
-    def __init__(self, max_time_white, max_time_black, max_turns, use_alpha_beta_white, use_alpha_beta_black, 
-                heuristic_name_white, heuristic_name_black, mode, human_color ):
+    def __init__(
+        self,
+        max_time_white,
+        max_time_black,
+        max_turns,
+        use_alpha_beta_white,
+        use_alpha_beta_black,
+        heuristic_name_white,
+        heuristic_name_black,
+        mode,
+        human_color
+    ):
         """
         If mode=1 => Human vs Human
         If mode=2 => Human vs AI (human_color='white' or 'black')
         If mode=3 => AI vs AI
         """
-        self.max_time_white = max_time_white
-        self.max_time_black = max_time_black
-        self.max_turns = max_turns
-        self.use_alpha_beta_white = use_alpha_beta_white
-        self.use_alpha_beta_black = use_alpha_beta_black
-        self.heuristic_name_white = heuristic_name_white
-        self.heuristic_name_black = heuristic_name_black
-        self.mode = mode
-        self.human_color = human_color
-        self.turn_number = 1
+        self.max_time_white        = max_time_white
+        self.max_time_black        = max_time_black
+        self.max_turns             = max_turns
+        self.use_alpha_beta_white  = use_alpha_beta_white
+        self.use_alpha_beta_black  = use_alpha_beta_black
+        self.heuristic_name_white  = heuristic_name_white
+        self.heuristic_name_black  = heuristic_name_black
+        self.mode                  = mode
+        self.human_color           = human_color
+
         self.current_game_state = self.init_board()
+        self.turn_number        = 1
+        
+        # Decide who is AI vs human
         self.white_player = 'human' if (mode == 1 or (mode == 2 and human_color == 'white')) else 'ai'
         self.black_player = 'human' if (mode == 1 or (mode == 2 and human_color == 'black')) else 'ai'
-        
-        # One "turn" = White moves, then Black moves
-        self.turn_number = 1
 
-        # Build filename e.g. "gameTrace-true-3-10.txt"
-        b_str = "gameMode_" + str(self.mode).lower()  # "true"/"false"
-        t_str = datetime.now().strftime("%Y-%m-%d")
-        n_str = str(self.max_turns)
-        self.log_filename = f"gameTrace-{t_str}-{b_str}-{n_str}.txt"
+        # Build a more descriptive log filename
+        now_str = datetime.now().strftime("%Y%m%d-%H%M%S")  # e.g. "20250307-143025"
+        mode_str = f"mode{mode}"
+        white_ab = f"wAB{str(self.use_alpha_beta_white).lower()}"
+        black_ab = f"bAB{str(self.use_alpha_beta_black).lower()}"
 
-        # Open the file for logging
+        # Heuristics might be None if it's a human for that side, so guard with a default
+        w_heur = self.heuristic_name_white if self.heuristic_name_white else "none"
+        b_heur = self.heuristic_name_black if self.heuristic_name_black else "none"
+
+        # Putting it all together
+        self.log_filename = (
+            f"gameTrace_{now_str}_"
+            f"{mode_str}_"
+            f"wTime{self.max_time_white}_"
+            f"bTime{self.max_time_black}_"
+            f"{white_ab}_"
+            f"{black_ab}_"
+            f"wH-{w_heur}_"
+            f"bH-{b_heur}_"
+            f"maxT{self.max_turns}.txt"
+        )
+
         self.log_file = open(self.log_filename, "w", encoding="utf-8")
 
-        # Placeholder stats for AI
+        # Stats for AI
         self.cumulative_states_explored = 0
         self.states_by_depth = {}  # e.g. {0:count, 1:count,...}
+
+        # NEW: expansions data
+        self.nodes_visited = 0
+        self.total_branchings = 0
 
         # Write initial log info
         self.log_initial_parameters()
@@ -70,7 +118,6 @@ class MiniChess:
     # ----------------------------------------------------------------------
     #                           LOGGING
     # ----------------------------------------------------------------------
-
     def log(self, text=""):
         """Helper for writing a line to the log file."""
         self.log_file.write(text + "\n")
@@ -82,37 +129,40 @@ class MiniChess:
            b) max number of turns
            c) play mode (who is AI/human)
            d) alpha-beta on/off
-           e) heuristic name
+           e) heuristic name(s)
         """
         def player_desc(player):
             return "AI" if player == 'ai' else "H"
 
         mode_str = f"Player1={player_desc(self.white_player)} & Player2={player_desc(self.black_player)}"
         self.log("----- Game Parameters -----")
-        self.log(f"(a) Time limit (t): \nBlack Max Time:{self.max_time_black} seconds \White Max Time:{self.max_time_black} seconds")
+        self.log(f"(a) Time limit (t): ")
+        self.log(f"    White Max Time: {self.max_time_white} seconds")
+        self.log(f"    Black Max Time: {self.max_time_black} seconds")
         self.log(f"(b) Max number of turns (n) = {self.max_turns}")
         self.log(f"(c) Play mode => {mode_str}")
 
-        if (self.mode == 2 and self.human_color == 'white'):
-            ab_str = "ON" if self.use_alpha_beta_black else "OFF"
-            self.log(f"(d) Alpha-beta is {ab_str}")
-            self.log(f"(e) Heuristic name = {self.heuristic_name_black}")
-        elif (self.mode == 2 and self.human_color == 'black'):
-            ab_str = "ON" if self.use_alpha_beta_white else "OFF"
-            self.log(f"(d) Alpha-beta is {ab_str}")
-            self.log(f"(e) Heuristic name = {self.heuristic_name_white}")
-            
-        elif (self.mode == 3):
-            ab_str = "ON" if self.use_alpha_beta_white else "OFF"
-            self.log(f"(d) White Alpha-beta is {ab_str}")
-            self.log(f"(e)White Heuristic name = {self.heuristic_name_white}")
-            ab_str = "ON" if self.use_alpha_beta_black else "OFF"
-            self.log(f"(d) Black Alpha-beta is {ab_str}")
-            self.log(f"(e)White Heuristic name = {self.heuristic_name_white}")
-
-        elif (self.mode == 1):
+        if self.mode == 1:
             # No AI => alpha-beta not applicable
             self.log("(d) No AI in this game => alpha-beta N/A")
+
+        elif self.mode == 2:
+            # Only one side is AI, so we mention that side’s alpha-beta & heuristic
+            if self.white_player == 'ai':
+                ab_str = "ON" if self.use_alpha_beta_white else "OFF"
+                self.log(f"(d) Alpha-beta is {ab_str}")
+                self.log(f"(e) Heuristic name = {self.heuristic_name_white}")
+            else:
+                ab_str = "ON" if self.use_alpha_beta_black else "OFF"
+                self.log(f"(d) Alpha-beta is {ab_str}")
+                self.log(f"(e) Heuristic name = {self.heuristic_name_black}")
+
+        else:  # mode == 3 => AI vs AI
+            ab_w_str = "ON" if self.use_alpha_beta_white else "OFF"
+            ab_b_str = "ON" if self.use_alpha_beta_black else "OFF"
+            self.log(f"(d) White Alpha-beta: {ab_w_str}, Black Alpha-beta: {ab_b_str}")
+            self.log(f"(e) White Heuristic: {self.heuristic_name_white}, Black Heuristic: {self.heuristic_name_black}")
+
         self.log()
 
     def log_initial_board(self):
@@ -144,6 +194,17 @@ class MiniChess:
         s_col_label = chr(ord('A') + sc)
         e_col_label = chr(ord('A') + ec)
         return f"{s_col_label}{s_row_label} {e_col_label}{e_row_label}"
+
+    # NEW: compute average BF
+    def compute_average_bf(self):
+        """
+        Compute average branching factor: 
+        total_branchings / (nodes_visited - 1), if nodes_visited > 1.
+        """
+        if self.nodes_visited > 1:
+            return self.total_branchings / (self.nodes_visited - 1)
+        else:
+            return 0.0
 
     def log_move_action(
         self,
@@ -184,14 +245,27 @@ class MiniChess:
         if is_ai:
             self.log("    [Cumulative AI Info]")
             self.log(f"    (a) States explored so far: {self.cumulative_states_explored:,}")
-            depth_details = ", ".join([f"{d}:{cnt}" for d, cnt in sorted(self.states_by_depth.items())])
+
+            # Summaries by depth
+            depth_strs = []
+            for d in sorted(self.states_by_depth.keys()):
+                count = self.states_by_depth[d]
+                depth_strs.append(f"{d}={short_number_fmt(count)}")
+            depth_details = " ".join(depth_strs)
             self.log(f"    (b) States by depth: {depth_details}")
+
             total_states = max(self.cumulative_states_explored, 1)
-            percentages = ", ".join(
-                [f"{d}:{(cnt/total_states)*100:.1f}%" for d, cnt in sorted(self.states_by_depth.items())]
-            )
+            pct_strs = []
+            for d in sorted(self.states_by_depth.keys()):
+                cnt = self.states_by_depth[d]
+                pct = (cnt / total_states) * 100
+                pct_strs.append(f"{d}={pct:.1f}%")
+            percentages = " ".join(pct_strs)
             self.log(f"    (c) % states by depth: {percentages}")
-            self.log(f"    (d) average branching factor: 2.5 (placeholder)")
+
+            avg_bf = self.compute_average_bf()
+            self.log(f"    (d) average branching factor: {avg_bf:.1f}")
+
         self.log()
 
     def log_winner(self, message):
@@ -264,12 +338,15 @@ class MiniChess:
             rightCol = col + 1
 
             if piece_type == 'p':
+                # Forward
                 if (0 <= frontRow < 5 and 0 <= col < 5 and
                     game_state["board"][frontRow][col] == '.'):
                     valid_moves.append(((row, col), (frontRow, col)))
+                # Capture left
                 if (0 <= frontRow < 5 and 0 <= leftCol < 5 and
                     game_state["board"][frontRow][leftCol].startswith(opponentColor)):
                     valid_moves.append(((row, col), (frontRow, leftCol)))
+                # Capture right
                 if (0 <= frontRow < 5 and 0 <= rightCol < 5 and
                     game_state["board"][frontRow][rightCol].startswith(opponentColor)):
                     valid_moves.append(((row, col), (frontRow, rightCol)))
@@ -368,18 +445,17 @@ class MiniChess:
     def game_over(self, game_state):
         """
         Return True if the game has ended, False otherwise.
-        No printing here—just the logic.
         """
+        # Check if only one King remains
         kings = [
             piece for row in game_state["board"] for piece in row
             if piece in ['wK', 'bK']
         ]
         if len(kings) == 1:
-            # White or black is missing a king => game is over
             return True
 
+        # Or if max turns reached
         if self.turn_number > self.max_turns:
-            # Reached the maximum turn limit => draw
             return True
 
         return False
@@ -432,7 +508,7 @@ class MiniChess:
             white_is_ai = (self.white_player == 'ai')
             if white_is_ai:
                 print("White AI is thinking...")
-                chosen_move, move_time, heur, search_s = self.ai_flow()
+                chosen_move, move_time, heur, search_s = self.ai_flow(is_white=True)
             else:
                 chosen_move = self.human_move()
                 move_time   = 0.0
@@ -465,7 +541,7 @@ class MiniChess:
             black_is_ai = (self.black_player == 'ai')
             if black_is_ai:
                 print("Black AI is thinking...")
-                chosen_move, move_time, heur, search_s = self.ai_flow()
+                chosen_move, move_time, heur, search_s = self.ai_flow(is_white=False)
             else:
                 chosen_move = self.human_move()
                 move_time   = 0.0
@@ -492,24 +568,30 @@ class MiniChess:
 
             self.turn_number += 1
 
-    def ai_flow(self):
+    def ai_flow(self, is_white):
         """
         AI picks a move using Minimax/Alpha-Beta with the chosen heuristic.
-        Uses different configurations for White and Black AI.
+        Uses separate config for White vs Black (time, alpha-beta, heuristic).
         Returns (chosen_move, move_time, heuristic_score, search_score).
         """
-        # Determine which AI is playing
-        is_white_turn = (self.current_game_state['turn'] == 'white')
-        
-        # Select the correct AI configuration
-        max_time = self.max_time_white if is_white_turn else self.max_time_black
-        use_alpha_beta = self.use_alpha_beta_white if is_white_turn else self.use_alpha_beta_black
-        heuristic_name = self.heuristic_name_white if is_white_turn else self.heuristic_name_black
+        # Reset expansions for this search
+        self.nodes_visited = 0
+        self.total_branchings = 0
+
+        # Decide parameters
+        if is_white:
+            max_time = self.max_time_white
+            use_alpha_beta = self.use_alpha_beta_white
+            heuristic_name = self.heuristic_name_white
+        else:
+            max_time = self.max_time_black
+            use_alpha_beta = self.use_alpha_beta_black
+            heuristic_name = self.heuristic_name_black
 
         start_time = time.time()
-        search_depth = 3  # Can be adjusted dynamically later
+        search_depth = 3  # Could be set dynamically
 
-        # AI selects the best move
+        # Perform the search
         chosen_move, best_score = choose_best_move(
             game=self,
             game_state=self.current_game_state,
@@ -520,19 +602,21 @@ class MiniChess:
 
         elapsed = time.time() - start_time
 
-        # Handle AI failures or rule violations
+        # Handle no move found
         if not chosen_move:
             print(f"{self.current_game_state['turn'].capitalize()} AI has no moves. Game ends.")
             self.log_winner(f"{self.current_game_state['turn'].capitalize()} AI lost: No moves available.")
             self.close_log()
             sys.exit(0)
 
+        # Handle time forfeit
         if elapsed > max_time:
             print(f"{self.current_game_state['turn'].capitalize()} AI exceeded {max_time}s time limit and loses.")
             self.log_winner(f"{self.current_game_state['turn'].capitalize()} AI lost by time forfeit.")
             self.close_log()
             sys.exit(0)
 
+        # Handle illegal move
         if not self.is_valid_move(self.current_game_state, chosen_move):
             print(f"{self.current_game_state['turn'].capitalize()} AI made an illegal move and loses.")
             self.log_winner(f"{self.current_game_state['turn'].capitalize()} AI lost by illegal move.")
@@ -543,7 +627,7 @@ class MiniChess:
         heuristic_score = best_score
         search_score = best_score
 
-        # Simulating states explored (incrementing for demo purposes)
+        # For demonstration, just say each AI search encountered 10 states
         self.cumulative_states_explored += 10
         self.states_by_depth[search_depth] = self.states_by_depth.get(search_depth, 0) + 10
 
@@ -573,13 +657,15 @@ class MiniChess:
         self.close_log()
 
     def play(self):
-        print(f"\nStarting MiniChess with: "
-              f"white_max_time={self.max_time_white},black_max_time={self.max_time_black} "
-              f"max_turns={self.max_turns}, "
-              f"white_use_alpha_beta={self.use_alpha_beta_white}, mode={self.mode},black_use_alpha_beta={self.use_alpha_beta_black}, mode={self.mode} "
-              f"human_color={self.human_color}, "
-              f"white_heuristic_name={self.heuristic_name_white},black_heuristic_name={self.heuristic_name_black}.")
-        print(f"Logging to file: {self.log_filename}")
+        print(
+            f"\nStarting MiniChess with:\n"
+            f"  White time={self.max_time_white}s, Black time={self.max_time_black}s,\n"
+            f"  max_turns={self.max_turns},\n"
+            f"  White use_alpha_beta={self.use_alpha_beta_white}, Black use_alpha_beta={self.use_alpha_beta_black},\n"
+            f"  mode={self.mode}, human_color={self.human_color},\n"
+            f"  White heuristic={self.heuristic_name_white}, Black heuristic={self.heuristic_name_black}.\n"
+            f"Logging to file: {self.log_filename}"
+        )
         self.run_game_loop()
 
 
@@ -627,11 +713,12 @@ def main():
 
     # If mode=1 => no AI parameters needed
     if mode == 1:
-        max_time = 3
-        use_alpha_beta_white = True
-        use_alpha_beta_black = True
-        heuristic_name_white = 'e0'
-        heuristic_name_black = 'e0'
+        max_time_white = 3
+        max_time_black = 3
+        use_alpha_beta_white = False  # No AI anyway
+        use_alpha_beta_black = False
+        heuristic_name_white = None
+        heuristic_name_black = None
 
     elif mode == 2:
         # AI vs Human => ask for single AI settings
@@ -672,15 +759,25 @@ def main():
             else:
                 print("Invalid choice. Pick from e0, e1, e2.")
 
-        # Assign AI settings based on color choice
+        # Assign AI settings based on which color the human chose
         if human_color == "white":
-            use_alpha_beta_white = False  # Human doesn't use AI
+            # White = human => no AI settings
+            max_time_white = 0
+            use_alpha_beta_white = False
             heuristic_name_white = None
+
+            # Black = AI => use chosen
+            max_time_black = max_time
             use_alpha_beta_black = use_alpha_beta
             heuristic_name_black = heuristic_name
         else:
-            use_alpha_beta_black = False  # Human doesn't use AI
+            # Black = human => no AI settings
+            max_time_black = 0
+            use_alpha_beta_black = False
             heuristic_name_black = None
+
+            # White = AI => use chosen
+            max_time_white = max_time
             use_alpha_beta_white = use_alpha_beta
             heuristic_name_white = heuristic_name
 
@@ -767,8 +864,8 @@ def main():
 
     # Create the game object with separate AI settings
     game = MiniChess(
-        max_time_white=max_time_white if mode == 3 else max_time,
-        max_time_black=max_time_black if mode == 3 else max_time,
+        max_time_white=max_time_white,
+        max_time_black=max_time_black,
         max_turns=max_turns,
         use_alpha_beta_white=use_alpha_beta_white,
         use_alpha_beta_black=use_alpha_beta_black,
@@ -779,6 +876,7 @@ def main():
     )
 
     game.play()
+
 
 if __name__ == "__main__":
     main()

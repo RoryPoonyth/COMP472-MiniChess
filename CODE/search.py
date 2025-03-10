@@ -14,9 +14,8 @@ def evaluate_state_e0(game_state):
       Bishop (B) = 3
       Queen (Q)  = 9
       King (K)   = 999
-
     We add a small bonus for pieces that can be captured in one move,
-    weighting the captured piece's value by e.g. 0.2.
+    weighting the captured piece's value by 0.2, for instance.
     """
     board = game_state["board"]
     score = 0
@@ -44,12 +43,13 @@ def evaluate_state_e0(game_state):
     # Potential captures
     white_capture_value = approximate_captures(board, 'w', piece_values)
     black_capture_value = approximate_captures(board, 'b', piece_values)
+    # Add a fraction of the capturable value to the score
+    # e.g. 0.2 factor
     capture_factor = 0.2
     capture_term = capture_factor * (white_capture_value - black_capture_value)
     score += capture_term
 
     return score
-
 
 def evaluate_state_e1(game_state):
     """
@@ -59,6 +59,8 @@ def evaluate_state_e1(game_state):
        - + potential captures
     """
     board = game_state["board"]
+
+    # Start with the base e0 (material + capture potential)
     base_score = evaluate_state_e0(game_state)
 
     # Pawn Advancement + Center Control
@@ -90,24 +92,28 @@ def evaluate_state_e1(game_state):
 
     return base_score + pawn_adv_bonus + center_control_bonus
 
-
 def evaluate_state_e2(game_state):
     """
     e2: Builds on e1 by adding:
         - Mobility: (#White moves - #Black moves) * 0.1
         - King safety: penalize king on board edge
         - + potential captures (inherited from e0)
+
+    So this has everything:
+      Material + captures + pawn advancement + center + mobility + king safety
     """
     board = game_state["board"]
+
+    # Start with e1 logic (which already includes e0 inside it)
     score = evaluate_state_e1(game_state)
 
-    # Mobility
+    # 1) Mobility
     w_moves = approximate_moves(board, 'w')
     b_moves = approximate_moves(board, 'b')
     mobility_term = 0.1 * (w_moves - b_moves)
     score += mobility_term
 
-    # King safety
+    # 2) King safety
     for r, row in enumerate(board):
         for c, piece in enumerate(row):
             if piece.endswith('K'):  # wK or bK
@@ -120,11 +126,14 @@ def evaluate_state_e2(game_state):
 
     return score
 
-
 def approximate_captures(board, color_char, piece_values):
     """
     Returns the total *value* of opponent pieces that 'color_char' can capture
-    in one move. The higher this is, the better for that color.
+    in one move. The higher this is, the better for that color, since they 
+    can potentially win material. We'll reuse logic similar to approximate_moves,
+    but specifically to see if the square targeted is an opponent piece.
+
+    piece_values: a dict mapping {'p':1, 'N':3,...}
     """
     opponent = 'w' if color_char == 'b' else 'b'
     total_capture_value = 0
@@ -132,7 +141,10 @@ def approximate_captures(board, color_char, piece_values):
     for r, row in enumerate(board):
         for c, piece in enumerate(row):
             if piece.startswith(color_char):
+                ptype = piece[1]
+                # We'll check each potential move for a capture
                 possible_targets = get_possible_moves_for_piece(board, r, c, piece, opponent)
+                # If the target is an opponent piece, add its piece_values
                 for (tr, tc) in possible_targets:
                     target_piece = board[tr][tc]
                     if target_piece.startswith(opponent):
@@ -142,11 +154,11 @@ def approximate_captures(board, color_char, piece_values):
 
     return total_capture_value
 
-
 def get_possible_moves_for_piece(board, r, c, piece, opponent):
     """
-    Return a list of board coords (row,col) that this piece can move to in one step,
-    ignoring checks etc. Only for evaluating potential captures.
+    Return a list of board coordinates (row,col) 
+    that this piece can move to in one step, ignoring checks, etc. 
+    Only used for the purpose of evaluating potential captures.
     """
     ptype = piece[1]
     color = piece[0]
@@ -171,7 +183,7 @@ def get_possible_moves_for_piece(board, r, c, piece, opponent):
                 moves.append((nr, nc))
 
     elif ptype == 'B':
-        directions = [(-1, -1), (-1, +1), (1, -1), (1, +1)]
+        directions = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
         for dr, dc in directions:
             nr, nc = r, c
             while True:
@@ -180,7 +192,7 @@ def get_possible_moves_for_piece(board, r, c, piece, opponent):
                 if not (0 <= nr < 5 and 0 <= nc < 5):
                     break
                 moves.append((nr, nc))
-                # If we hit any piece (opponent or ours), stop
+                # If we hit any piece (opponent or ours), we stop
                 if board[nr][nc] != '.':
                     break
 
@@ -199,6 +211,7 @@ def get_possible_moves_for_piece(board, r, c, piece, opponent):
                 if not (0 <= nr < 5 and 0 <= nc < 5):
                     break
                 moves.append((nr, nc))
+                # Stop if we hit any piece
                 if board[nr][nc] != '.':
                     break
 
@@ -217,21 +230,24 @@ def get_possible_moves_for_piece(board, r, c, piece, opponent):
 
     return moves
 
-
 def approximate_moves(board, color_char):
     """
-    Approximate how many squares 'color_char' can move to 
-    (including capturing opponent squares).
+    Same as before: approximate mobility by counting 
+    how many squares 'color_char' pieces can move to 
+    (including captures on opponent squares).
     """
-    opponentColor = 'b' if color_char == 'w' else 'w'
+    pieceColor = color_char  
+    opponentColor = 'b' if pieceColor == 'w' else 'w'
     moves_count = 0
 
     for r, row in enumerate(board):
         for c, piece in enumerate(row):
-            if piece.startswith(color_char):
+            if piece.startswith(pieceColor):
                 ptype = piece[1]
+                # We'll do a partial simulation of valid moves 
+                # (including potential captures).
                 if ptype == 'p':
-                    front = r - 1 if color_char == 'w' else r + 1
+                    front = r - 1 if pieceColor == 'w' else r + 1
                     if 0 <= front < 5 and board[front][c] == '.':
                         moves_count += 1
                     leftCol = c - 1
@@ -251,7 +267,7 @@ def approximate_moves(board, color_char):
                                 moves_count += 1
 
                 elif ptype == 'B':
-                    directions = [(-1, -1), (-1, +1), (1, -1), (1, +1)]
+                    directions = [(-1, -1), (-1, +1), (+1, -1), (+1, +1)]
                     for dr, dc in directions:
                         nr, nc = r, c
                         while True:
@@ -294,7 +310,7 @@ def approximate_moves(board, color_char):
                         (-1, 0), (1, 0),
                         (0, -1), (0, 1),
                         (-1, -1), (-1, +1),
-                        (1, -1), (1, +1)
+                        (1, -1),  (1, +1)
                     ]
                     for dr, dc in directions:
                         nr, nc = r + dr, c + dc
@@ -304,124 +320,178 @@ def approximate_moves(board, color_char):
 
     return moves_count
 
+
 # ----------------------------------------------------------------------
 #                 MINIMAX / ALPHA-BETA SEARCH
 # ----------------------------------------------------------------------
 
-
 def minimax(game, game_state, depth, maximizing_player, heuristic_func):
     """
-    Basic Minimax without alpha-beta. 
-    Returns (best_score, best_move).
+    Basic Minimax without alpha-beta.
+    Returns (best_score, best_move, states_explored_by_depth).
     """
-    # (NEW) track expansions: visiting a node
-    game.nodes_visited += 1
-
     if depth == 0 or game.game_over(game_state):
-        return heuristic_func(game_state), None
+        # Base case: evaluate the state and return no move
+        return heuristic_func(game_state), None, {depth: 1}
 
     valid_moves = game.valid_moves(game_state)
     if not valid_moves:
-        return heuristic_func(game_state), None
-
-    # (NEW) total_branchings -> sum of expansions
-    game.total_branchings += len(valid_moves)
+        # No valid moves => evaluate the state and return no move
+        return heuristic_func(game_state), None, {depth: 1}
 
     if maximizing_player:
         best_score = -math.inf
         best_move = None
+        states_explored_by_depth = {depth: 0}  # Track states at current depth
         for move in valid_moves:
+            # Make a copy of the state and apply the move
             next_state = copy_game_state(game_state)
             game.make_move(next_state, move)
-            new_score, _ = minimax(game, next_state, depth - 1, False, heuristic_func)
+
+            # Recursively call minimax
+            new_score, _, states = minimax(game, next_state, depth - 1, False, heuristic_func)
+
+            # Update states explored at current depth
+            states_explored_by_depth[depth] = states_explored_by_depth.get(depth, 0) + 1
+
+            # Merge states explored at lower depths
+            for d, cnt in states.items():
+                states_explored_by_depth[d] = states_explored_by_depth.get(d, 0) + cnt
+
+            # Update best score and move
             if new_score > best_score:
                 best_score = new_score
                 best_move = move
-        return best_score, best_move
+
+        return best_score, best_move, states_explored_by_depth
     else:
         best_score = math.inf
         best_move = None
+        states_explored_by_depth = {depth: 0}  # Track states at current depth
         for move in valid_moves:
+            # Make a copy of the state and apply the move
             next_state = copy_game_state(game_state)
             game.make_move(next_state, move)
-            new_score, _ = minimax(game, next_state, depth - 1, True, heuristic_func)
+
+            # Recursively call minimax
+            new_score, _, states = minimax(game, next_state, depth - 1, True, heuristic_func)
+
+            # Update states explored at current depth
+            states_explored_by_depth[depth] = states_explored_by_depth.get(depth, 0) + 1
+
+            # Merge states explored at lower depths
+            for d, cnt in states.items():
+                states_explored_by_depth[d] = states_explored_by_depth.get(d, 0) + cnt
+
+            # Update best score and move
             if new_score < best_score:
                 best_score = new_score
                 best_move = move
-        return best_score, best_move
+
+        return best_score, best_move, states_explored_by_depth
 
 
 def alpha_beta(game, game_state, depth, alpha, beta, maximizing_player, heuristic_func):
     """
     Minimax with Alpha-Beta pruning.
-    Returns (best_score, best_move).
+    Returns (best_score, best_move, states_explored_by_depth).
     """
-    # (NEW) track expansions: visiting a node
-    game.nodes_visited += 1
-
     if depth == 0 or game.game_over(game_state):
-        return heuristic_func(game_state), None
+        # Base case: evaluate the state and return no move
+        return heuristic_func(game_state), None, {depth: 1}
 
     valid_moves = game.valid_moves(game_state)
     if not valid_moves:
-        return heuristic_func(game_state), None
-
-    # (NEW) total_branchings -> sum of expansions
-    game.total_branchings += len(valid_moves)
+        # No valid moves => evaluate the state and return no move
+        return heuristic_func(game_state), None, {depth: 1}
 
     if maximizing_player:
         best_score = -math.inf
         best_move = None
+        states_explored_by_depth = {depth: 0}  # Track states at current depth
         for move in valid_moves:
+            # Make a copy of the state and apply the move
             next_state = copy_game_state(game_state)
             game.make_move(next_state, move)
-            new_score, _ = alpha_beta(game, next_state, depth - 1, alpha, beta, False, heuristic_func)
+
+            # Recursively call alpha_beta
+            new_score, _, states = alpha_beta(game, next_state, depth - 1, alpha, beta, False, heuristic_func)
+
+            # Update states explored at current depth
+            states_explored_by_depth[depth] = states_explored_by_depth.get(depth, 0) + 1
+
+            # Merge states explored at lower depths
+            for d, cnt in states.items():
+                states_explored_by_depth[d] = states_explored_by_depth.get(d, 0) + cnt
+
+            # Update best score and move
             if new_score > best_score:
                 best_score = new_score
                 best_move = move
+
+            # Alpha-beta pruning
             alpha = max(alpha, best_score)
             if alpha >= beta:
                 break  # beta cutoff
-        return best_score, best_move
+
+        return best_score, best_move, states_explored_by_depth
     else:
         best_score = math.inf
         best_move = None
+        states_explored_by_depth = {depth: 0}  # Track states at current depth
         for move in valid_moves:
+            # Make a copy of the state and apply the move
             next_state = copy_game_state(game_state)
             game.make_move(next_state, move)
-            new_score, _ = alpha_beta(game, next_state, depth - 1, alpha, beta, True, heuristic_func)
+
+            # Recursively call alpha_beta
+            new_score, _, states = alpha_beta(game, next_state, depth - 1, alpha, beta, True, heuristic_func)
+
+            # Update states explored at current depth
+            states_explored_by_depth[depth] = states_explored_by_depth.get(depth, 0) + 1
+
+            # Merge states explored at lower depths
+            for d, cnt in states.items():
+                states_explored_by_depth[d] = states_explored_by_depth.get(d, 0) + cnt
+
+            # Update best score and move
             if new_score < best_score:
                 best_score = new_score
                 best_move = move
+
+            # Alpha-beta pruning
             beta = min(beta, best_score)
             if beta <= alpha:
                 break  # alpha cutoff
-        return best_score, best_move
+
+        return best_score, best_move, states_explored_by_depth
 
 
 def choose_best_move(game, game_state, max_depth, use_alpha_beta, heuristic_name='e0'):
     """
     Wrapper that picks the best move using either minimax or alpha-beta.
-    Returns (best_move, best_score).
+    Returns (best_move, best_score, states_explored_by_depth).
     """
-    # Grab the chosen heuristic or default to e0
+    # Select the correct heuristic function by name
     heuristic_func = HEURISTICS.get(heuristic_name, evaluate_state_e0)
 
     maximizing_player = (game_state["turn"] == "white")
+
+    # Copy the state so we don't mutate the actual game_state
     copied = copy_game_state(game_state)
 
     if use_alpha_beta:
-        best_score, best_move = alpha_beta(
+        best_score, best_move, states_explored_by_depth = alpha_beta(
             game,
             copied,
             depth=max_depth,
             alpha=-math.inf,
-            beta= math.inf,
+            beta=math.inf,
             maximizing_player=maximizing_player,
             heuristic_func=heuristic_func
         )
     else:
-        best_score, best_move = minimax(
+        best_score, best_move, states_explored_by_depth = minimax(
             game,
             copied,
             depth=max_depth,
@@ -429,7 +499,7 @@ def choose_best_move(game, game_state, max_depth, use_alpha_beta, heuristic_name
             heuristic_func=heuristic_func
         )
 
-    return best_move, best_score
+    return best_move, best_score, states_explored_by_depth
 
 
 def copy_game_state(game_state):
@@ -441,7 +511,7 @@ def copy_game_state(game_state):
     return new_state
 
 
-# Let the search code reference these easily
+# We keep a reference here, so choose_best_move can get it easily
 HEURISTICS = {
     'e0': evaluate_state_e0,
     'e1': evaluate_state_e1,

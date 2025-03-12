@@ -39,16 +39,6 @@ def evaluate_state_e0(game_state):
                 score += value
             else:
                 score -= value
-
-    # Potential captures
-    white_capture_value = approximate_captures(board, 'w', piece_values)
-    black_capture_value = approximate_captures(board, 'b', piece_values)
-    # Add a fraction of the capturable value to the score
-    # e.g. 0.2 factor
-    capture_factor = 0.2
-    capture_term = capture_factor * (white_capture_value - black_capture_value)
-    score += capture_term
-
     return score
 
 def evaluate_state_e1(game_state):
@@ -61,7 +51,19 @@ def evaluate_state_e1(game_state):
     board = game_state["board"]
 
     # Start with the base e0 (material + capture potential)
-    base_score = evaluate_state_e0(game_state)
+    # Potential captures
+    piece_values = {
+        'p': 1,
+        'N': 3,
+        'B': 3,
+        'Q': 9,
+        'K': 999
+    }
+    white_capture_value = approximate_captures(board, 'w', piece_values)
+    black_capture_value = approximate_captures(board, 'b', piece_values)
+    capture_factor = 0.2
+    capture_term = capture_factor * (white_capture_value - black_capture_value)
+    base_score = evaluate_state_e0(game_state) + capture_term
 
     # Pawn Advancement + Center Control
     pawn_adv_bonus = 0.0

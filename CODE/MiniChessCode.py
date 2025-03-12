@@ -32,13 +32,29 @@ class MiniChess:
         # One "turn" = White moves, then Black moves
         self.turn_number = 1
 
-        # Build filename e.g. "gameTrace-true-3-10.txt"
-        b_str = "gameMode_" + str(self.mode).lower()  # "true"/"false"
-        t_str = datetime.now().strftime("%Y-%m-%d")
-        n_str = str(self.max_turns)
-        self.log_filename = f"gameTrace-{t_str}-{b_str}-{n_str}.txt"
+         # Build a more descriptive log filename
+        now_str = datetime.now().strftime("%Y%m%d-%H%M%S")  # e.g. "20250307-143025"
+        mode_str = f"mode{mode}"
+        white_ab = f"wAB{str(self.use_alpha_beta_white).lower()}"
+        black_ab = f"bAB{str(self.use_alpha_beta_black).lower()}"
 
-        # Open the file for logging
+        # Heuristics might be None if it's a human for that side, so guard with a default
+        w_heur = self.heuristic_name_white if self.heuristic_name_white else "none"
+        b_heur = self.heuristic_name_black if self.heuristic_name_black else "none"
+
+        # Putting it all together
+        self.log_filename = (
+            f"gameTrace_{now_str}_"
+            f"{mode_str}_"
+            f"wTime{self.max_time_white}_"
+            f"bTime{self.max_time_black}_"
+            f"{white_ab}_"
+            f"{black_ab}_"
+            f"wH-{w_heur}_"
+            f"bH-{b_heur}_"
+            f"maxT{self.max_turns}.txt"
+        )
+
         self.log_file = open(self.log_filename, "w", encoding="utf-8")
 
         # Placeholder stats for AI
@@ -90,7 +106,7 @@ class MiniChess:
         self.log("----- Game Parameters -----")
         self.log(f"(a) Time limit (t): \nWhite Max Time:{self.max_time_white} seconds \Black Max Time:{self.max_time_black} seconds")
         self.log(f"(b) Max number of turns (n) = {self.max_turns}")
-        self.log(f"(c) Play mode (test)=> {mode_str}")
+        self.log(f"(c) Play mode => {mode_str}")
 
         if (self.mode == 2 and self.human_color == 'white'):
             ab_str = "ON" if self.use_alpha_beta_black else "OFF"
@@ -194,8 +210,8 @@ class MiniChess:
             percentages = ", ".join(
                 [f"{d}:{(cnt/total_states)*100:.1f}%" for d, cnt in sorted(self.states_by_depth.items())]
             )
-            self.log(f"    (c) % states by depth: {percentages}")
-            self.log(f"    (d) average branching factor: {average_branching_factor:.2f}")
+            self.log(f"    (c) % States by depth: {percentages}")
+            self.log(f"    (d) Average branching factor: {average_branching_factor:.2f}")
         self.log()
 
     def log_winner(self, message):
@@ -393,7 +409,7 @@ class MiniChess:
         Prompt the human player for a move, parse/validate it, and return if valid.
         """
         while True:
-            move_input = input(f"{self.current_game_state['turn'].capitalize()} to move (e.g. B3 B5), or 'exit': ")
+            move_input = input(f"{self.current_game_state['turn'].capitalize()} to move (e.g. A# B#), or 'exit': ")
             if move_input.lower() == 'exit':
                 print("Game exited by user.")
                 self.log_winner("Game exited by user.")

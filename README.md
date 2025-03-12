@@ -137,7 +137,7 @@ The game starts with a predefined board configuration and allows for turns where
 ---
 
 ## Authors
-- [Team Name]
+- AI Gambit
   - Rory Poonyth [Team Leader] | 40226938
   - Omar Eduardo Sanchez Lopez | 40027467
   - Mansi Gairola | 40107694

@@ -9,7 +9,7 @@ from search import choose_best_move
 
 class MiniChess:
     def __init__(self, max_time_white, max_time_black, max_turns, use_alpha_beta_white, use_alpha_beta_black, 
-                heuristic_name_white, heuristic_name_black, mode, human_color ):
+                 heuristic_name_white, heuristic_name_black, mode, human_color ):
         """
         If mode=1 => Human vs Human
         If mode=2 => Human vs AI (human_color='white' or 'black')
@@ -64,6 +64,13 @@ class MiniChess:
         # Write initial log info
         self.log_initial_parameters()
         self.log_initial_board()
+
+        # --------------------------------------
+        #  Track "no-capture" / "no change" rule
+        # --------------------------------------
+        # We'll track how many consecutive full turns had the same piece count.
+        self.stall_counter = 0  
+        self.last_piece_count = self.count_pieces(self.current_game_state)
 
     def init_board(self):
         """
@@ -279,20 +286,20 @@ class MiniChess:
         for piece, row, col in pieces:
             piece_type = piece[1]
             frontRow = row - 1 if pieceColor == 'w' else row + 1
-            backRow  = row + 1 if pieceColor == 'w' else row - 1
             leftCol  = col - 1
             rightCol = col + 1
 
             if piece_type == 'p':
-                if (0 <= frontRow < 5 and 0 <= col < 5 and
-                    game_state["board"][frontRow][col] == '.'):
+                # Pawn forward
+                if 0 <= frontRow < 5 and game_state["board"][frontRow][col] == '.':
                     valid_moves.append(((row, col), (frontRow, col)))
-                if (0 <= frontRow < 5 and 0 <= leftCol < 5 and
-                    game_state["board"][frontRow][leftCol].startswith(opponentColor)):
-                    valid_moves.append(((row, col), (frontRow, leftCol)))
-                if (0 <= frontRow < 5 and 0 <= rightCol < 5 and
-                    game_state["board"][frontRow][rightCol].startswith(opponentColor)):
-                    valid_moves.append(((row, col), (frontRow, rightCol)))
+                # Pawn captures
+                if 0 <= frontRow < 5 and 0 <= leftCol < 5:
+                    if game_state["board"][frontRow][leftCol].startswith(opponentColor):
+                        valid_moves.append(((row, col), (frontRow, leftCol)))
+                if 0 <= frontRow < 5 and 0 <= rightCol < 5:
+                    if game_state["board"][frontRow][rightCol].startswith(opponentColor):
+                        valid_moves.append(((row, col), (frontRow, rightCol)))
 
             elif piece_type == 'N':
                 knight_moves = [
@@ -404,6 +411,17 @@ class MiniChess:
 
         return False
 
+    def count_pieces(self, game_state):
+        """
+        Utility to count how many pieces remain on the board.
+        """
+        return sum(
+            1
+            for row in game_state['board']
+            for piece in row
+            if piece != '.'
+        )
+
     def human_move(self):
         """
         Prompt the human player for a move, parse/validate it, and return if valid.
@@ -505,11 +523,31 @@ class MiniChess:
                 new_board=self.current_game_state["board"]
             )
 
+            # Check if the game is over by normal means
             if self.game_over(self.current_game_state):
                 self.display_board(self.current_game_state)
                 self.log_end_and_close()
                 break
 
+            # -------------------------------------------
+            #    Check if piece count has stalled 10 turns
+            # -------------------------------------------
+            current_piece_count = self.count_pieces(self.current_game_state)
+            if current_piece_count == self.last_piece_count:
+                self.stall_counter += 1
+            else:
+                self.stall_counter = 0
+            self.last_piece_count = current_piece_count
+
+            if self.stall_counter >= 10:
+                # 10 full consecutive turns without a capture => draw
+                print("Draw due to no change in piece count for 10 consecutive turns!")
+                msg = f"Draw (no captures in 10 consecutive turns) at turn {self.turn_number}"
+                self.log_winner(msg)
+                self.close_log()
+                break
+
+            # Advance to the next turn
             self.turn_number += 1
 
     def ai_flow(self):
@@ -567,29 +605,6 @@ class MiniChess:
         for depth, count in states_explored_by_depth.items():
             self.states_by_depth[depth] = self.states_by_depth.get(depth, 0) + count
 
-        # Calculate percentages by depth
-        total_states = max(self.cumulative_states_explored, 1)  # Avoid division by zero
-        percentages_by_depth = {
-            depth: (count / total_states) * 100
-            for depth, count in self.states_by_depth.items()
-        }
-
-        # Calculate average branching factor
-        total_nodes = sum(self.states_by_depth.values())
-        total_children = sum(
-            depth * count for depth, count in self.states_by_depth.items()
-        )
-        average_branching_factor = total_children / total_nodes if total_nodes > 0 else 0
-        '''
-        # Log cumulative AI info
-        self.log("    [Cumulative AI Info]")
-        self.log(f"    (a) States explored so far: {self.cumulative_states_explored:,}")
-        depth_details = ", ".join([f"{d}:{cnt}" for d, cnt in sorted(self.states_by_depth.items())])
-        self.log(f"    (b) States by depth: {depth_details}")
-        percentage_details = ", ".join([f"{d}:{p:.1f}%" for d, p in sorted(percentages_by_depth.items())])
-        self.log(f"    (c) % states by depth: {percentage_details}")
-        self.log(f"    (d) Average branching factor: {average_branching_factor:.1f}")
-        '''
         return (chosen_move, elapsed, best_score, best_score)
 
     def log_end_and_close(self):
